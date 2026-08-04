@@ -2,6 +2,8 @@
 
 Backend Development individual assignment — a Spring Boot / Spring Data JPA REST API built on top of the provided `sample-boot-modules` multi-module skeleton (`domain-model`, `web-service`, `web-front`).
 
+The system revolves around **generating random data points and comparing them**: you create a `Dataset` with a `GeneratorConfig` (min/max range, sample count, optional seed), the server randomly fills it with `DataPoint`s, and you can then run a `Comparison` between any two data points to see which is greater and by how much.
+
 ## How to run
 
 ```
@@ -18,43 +20,46 @@ mvn test -pl web-service -am
 
 ## Domain model
 
-Five entities live in the `domain-model` module (`th.mfu.domain`), demonstrating all three required JPA relationship types:
+Four entities live in the `domain-model` module (`th.mfu.domain`), demonstrating all three required JPA relationship types:
 
 ```
-Customer 1 ────── 1 ShippingAddress      (One-to-One)
-Customer 1 ────── * Order                (One-to-Many / Many-to-One)
-Order    1 ────── * OrderItem            (One-to-Many / Many-to-One)
-OrderItem * ───── 1 Product              (Many-to-One)
+Dataset  1 ────── 1 GeneratorConfig      (One-to-One)
+Dataset  1 ────── * DataPoint            (One-to-Many / Many-to-One)
+Comparison * ───── 1 DataPoint (pointA)  (Many-to-One)
+Comparison * ───── 1 DataPoint (pointB)  (Many-to-One)
 ```
 
-- **Customer** — a shop customer (`displayname`, `email`, `phone`, `birthday`). Owns one `ShippingAddress` and can place many `Order`s.
-- **ShippingAddress** — a customer's delivery address (`address`, `city`, `postalCode`, `country`). Holds the foreign key back to `Customer` (`customer_id`, unique), making it the owning side of the **one-to-one** relationship.
-- **Order** — a sale order (`orderDate`, `status`). Belongs to exactly one `Customer` (**many-to-one**) and contains many `OrderItem`s (**one-to-many**). Mapped to table `orders` since `ORDER` is a reserved SQL keyword.
-- **OrderItem** — a line item (`quantity`, `unitPrice`) that belongs to one `Order` and references one `Product` (both **many-to-one**).
-- **Product** — a sellable product (`name`, `price`, `description`, `manufactureDate`).
+- **Dataset** — a named collection of data points (`name`, `description`, `createdAt`). Owns one `GeneratorConfig` and contains many `DataPoint`s.
+- **GeneratorConfig** — the settings used to randomly generate a dataset's points (`minValue`, `maxValue`, `sampleCount`, optional `seed` for reproducible runs). Holds the foreign key back to `Dataset` (`dataset_id`, unique), making it the owning side of the **one-to-one** relationship.
+- **DataPoint** — a single numeric value (`value`, `position`, `generatedAt`), either randomly generated or manually entered. Belongs to exactly one `Dataset` (**many-to-one**).
+- **Comparison** — the recorded result of comparing two `DataPoint`s (`result`: `A_GREATER`/`B_GREATER`/`EQUAL`, `difference`, `comparedAt`). References `pointA` and `pointB`, each a **many-to-one** to `DataPoint`.
 
-Each entity has a matching DTO in `web-service/.../dto` (`CustomerDTO`, `ShippingAddressDTO`, `OrderDTO`, `OrderItemDTO`, `ProductDTO`) so that JPA entities (with their lazy associations) are never serialized directly over the REST API — this avoids infinite-recursion/lazy-loading issues and keeps the API contract decoupled from the persistence model.
+Each entity has a matching DTO in `web-service/.../dto` (`DatasetDTO`, `GeneratorConfigDTO`, `DataPointDTO`, `ComparisonDTO`) so that JPA entities (with their lazy associations) are never serialized directly over the REST API — this avoids infinite-recursion/lazy-loading issues and keeps the API contract decoupled from the persistence model.
+
+## Random generation
+
+`POST /api/datasets` takes a `name`/`description` plus a `generatorConfig` (`minValue`, `maxValue`, `sampleCount`, optional `seed`). The service uses `java.util.Random` (seeded if provided, otherwise randomly seeded) to fill the new dataset with `sampleCount` values uniformly distributed in `[minValue, maxValue)`, all persisted in a single transaction via cascading save. `POST /api/datasets/{id}/regenerate` re-rolls a fresh random sample for an existing dataset using its stored config. Individual points can also be entered manually via `POST /api/data-points`.
 
 ## REST API
 
-Each of the three controllers (`CustomerController`, `ProductController`, `OrderController`) exposes the full CRUD verb set required by the assignment:
+Each of the three controllers (`DatasetController`, `DataPointController`, `ComparisonController`) exposes the full CRUD verb set required by the assignment:
 
-| Verb                | Customer                  | Product                  | Order                    |
-|----------------------|----------------------------|----------------------------|----------------------------|
-| Create (`POST`)      | `/api/customers`           | `/api/products`            | `/api/orders`               |
-| List (`GET`)         | `/api/customers`           | `/api/products`            | `/api/orders`               |
-| Update (`PATCH`)     | `/api/customers/{id}`      | `/api/products/{id}`       | `/api/orders/{id}`          |
-| Delete (`DELETE`)    | `/api/customers/{id}`      | `/api/products/{id}`       | `/api/orders/{id}`          |
+| Verb                | Dataset                    | DataPoint                   | Comparison                  |
+|----------------------|-----------------------------|-------------------------------|-------------------------------|
+| Create (`POST`)      | `/api/datasets`             | `/api/data-points`            | `/api/comparisons`            |
+| List (`GET`)         | `/api/datasets`             | `/api/data-points`            | `/api/comparisons`            |
+| Update (`PATCH`)     | `/api/datasets/{id}`        | `/api/data-points/{id}`       | `/api/comparisons/{id}`       |
+| Delete (`DELETE`)    | `/api/datasets/{id}`        | `/api/data-points/{id}`       | `/api/comparisons/{id}`       |
 
-`PATCH` endpoints apply a partial update: only non-null fields present in the request body are changed. Creating an `Order` accepts a `customerId` and a list of `{ productId, quantity }` items; the server looks up the customer/products, computes `unitPrice` from the product's current price, and persists the order together with its items in one transaction (exercising the cascading one-to-many relationships).
+`PATCH` endpoints apply a partial update: only non-null fields present in the request body are changed. `POST /api/comparisons` accepts `pointAId`/`pointBId`; the server looks up both `DataPoint`s and computes `result`/`difference` server-side (never trusted from client input).
 
 ## Tests
 
 `web-service/src/test/java/th/camt/controller` contains `MockMvc`-based integration tests (`@SpringBootTest` + `@AutoConfigureMockMvc`), one test class per controller, each covering all four REST verbs (Create / List / Update / Delete):
 
-- `CustomerControllerTest`
-- `ProductControllerTest`
-- `OrderControllerTest` (also exercises the Customer↔Order and Order↔Product relationships)
+- `DatasetControllerTest` — also verifies random generation actually produces `sampleCount` points
+- `DataPointControllerTest`
+- `ComparisonControllerTest` — also exercises the two Many-to-One relationships to `DataPoint` and the server-computed `result`/`difference`
 
 Tests run against their own isolated in-memory H2 database and each test method runs inside a rolled-back transaction (`@Transactional`), so they don't depend on `data.sql` and don't interfere with each other.
 
@@ -68,10 +73,11 @@ Tests run against their own isolated in-memory H2 database and each test method 
 
 Claude (Anthropic, Sonnet 5, via Cowork) was used to:
 
-- Design the domain model (entity fields and the One-to-One / Many-to-One / One-to-Many relationships) based on the assignment brief.
-- Generate the JPA entities, Spring Data repositories, DTOs, service layer, and REST controllers (Create/List/Patch/Delete) in `domain-model` and `web-service`.
-- Rewrite `application.properties` to use H2 and rewrite `data.sql` to match the new schema.
+- Analyze the original e-commerce domain model in this repo and redesign it around a new theme (random data point generation and comparison) per the assignment brief and the student's direction.
+- Design the domain model (entity fields and the One-to-One / Many-to-One / One-to-Many relationships).
+- Generate the JPA entities, Spring Data repositories, DTOs, service layer (including the `java.util.Random`-based generation logic), and REST controllers (Create/List/Patch/Delete) in `domain-model` and `web-service`.
+- Rewrite `data.sql` to match the new schema.
 - Write the MockMvc integration tests in `web-service/src/test/java`.
-- Draft this README.
+- Rewrite this README.
 
-All generated code was reviewed manually for correctness. Automated `mvn test` execution could not be run in the assistant's sandboxed environment (no network access to Maven Central), so tests should be (and were intended to be) verified locally with `mvn test` before submission. I can explain any part of this code in person as required.
+All generated code was reviewed manually for correctness. Automated `mvn test` execution could not be fully verified in the assistant's sandboxed environment (no network access to Maven Central to download dependencies), so tests should be (and were intended to be) verified locally with `mvn test` before submission. I can explain any part of this code in person as required.

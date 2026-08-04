@@ -18,6 +18,7 @@
             <groupId>th.mfu</groupId>
             <artifactId>web-front</artifactId>
             <version>${project.version}</version>
+            <type>war</type>
         </dependency>
         <dependency>
             <groupId>th.mfu</groupId>

@@ -13,42 +13,43 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import th.camt.dto.ProductDTO;
-import th.camt.service.ProductService;
+import th.camt.dto.DataPointDTO;
+import th.camt.service.DataPointService;
 
 @RestController
-@RequestMapping("/api/products")
-public class ProductController {
+@RequestMapping("/api/data-points")
+public class DataPointController {
 
-    private final ProductService productService;
+    private final DataPointService dataPointService;
 
-    public ProductController(ProductService productService) {
-        this.productService = productService;
+    public DataPointController(DataPointService dataPointService) {
+        this.dataPointService = dataPointService;
     }
 
+    // Create: manually input a single data point into an existing dataset.
     @PostMapping
-    public ResponseEntity<ProductDTO> create(@RequestBody ProductDTO dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(productService.create(dto));
+    public ResponseEntity<DataPointDTO> create(@RequestBody DataPointDTO dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(dataPointService.create(dto));
     }
 
     @GetMapping
-    public List<ProductDTO> list() {
-        return productService.list();
+    public List<DataPointDTO> list() {
+        return dataPointService.list();
     }
 
     @GetMapping("/{id}")
-    public ProductDTO get(@PathVariable Long id) {
-        return productService.get(id);
+    public DataPointDTO get(@PathVariable Long id) {
+        return dataPointService.get(id);
     }
 
     @PatchMapping("/{id}")
-    public ProductDTO patch(@PathVariable Long id, @RequestBody ProductDTO dto) {
-        return productService.patch(id, dto);
+    public DataPointDTO patch(@PathVariable Long id, @RequestBody DataPointDTO dto) {
+        return dataPointService.patch(id, dto);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        productService.delete(id);
+        dataPointService.delete(id);
         return ResponseEntity.noContent().build();
     }
 }
