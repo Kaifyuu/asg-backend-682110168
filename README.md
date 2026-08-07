@@ -63,6 +63,15 @@ Each of the three controllers (`DatasetController`, `DataPointController`, `Comp
 
 Tests run against their own isolated in-memory H2 database and each test method runs inside a rolled-back transaction (`@Transactional`), so they don't depend on `data.sql` and don't interfere with each other.
 
+## DataDuel game
+
+`web-service/src/main/resources/static/index.html` is a static, vanilla-JS single-page app served automatically by Spring Boot at `http://localhost:8080/` (no build step, calls the REST API above via `fetch`). It's a higher/lower/equal card game built on top of the `Dataset`/`DataPoint` API:
+
+- Draws a deck of `DataPoint`s and you guess whether the next card is higher, lower, or equal to the current one (keybinds: `↑`/`W` higher, `↓`/`S` lower, `E` equal, `Space`/`Enter`/`→` next card).
+- Scoring rewards accuracy and late-game risk: score scales with cards left in the deck and grows exponentially (`ROUND_BASE ^ decksCleared`) the more decks you clear.
+- Each card tracks both its position within the current deck and its all-time position across every deck ever dealt, so returning cards from earlier decks stay comparable.
+- Visual feedback (French-card-style corners, screen shake, particle bursts, a rising "heat" glow) ramps up as the stakes climb.
+
 ## Project structure
 
 - `domain-model` — JPA entities (`th.mfu.domain`)
@@ -78,6 +87,8 @@ Claude (Anthropic, Sonnet 5, via Cowork) was used to:
 - Generate the JPA entities, Spring Data repositories, DTOs, service layer (including the `java.util.Random`-based generation logic), and REST controllers (Create/List/Patch/Delete) in `domain-model` and `web-service`.
 - Rewrite `data.sql` to match the new schema.
 - Write the MockMvc integration tests in `web-service/src/test/java`.
+- Build the DataDuel game frontend (`web-service/src/main/resources/static/index.html`) on top of the REST API.
+- Fix a foreign-key violation in `DatasetService.regenerate()` (comparisons referencing a dataset's points now get deleted before the points do).
 - Rewrite this README.
 
 All generated code was reviewed manually for correctness. Automated `mvn test` execution could not be fully verified in the assistant's sandboxed environment (no network access to Maven Central to download dependencies), so tests should be (and were intended to be) verified locally with `mvn test` before submission. I can explain any part of this code in person as required.
