@@ -12,6 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import th.camt.dto.DatasetDTO;
 import th.camt.dto.GeneratorConfigDTO;
+import th.camt.repository.ComparisonRepository;
 import th.camt.repository.DatasetRepository;
 import th.mfu.domain.DataPoint;
 import th.mfu.domain.Dataset;
@@ -26,9 +27,11 @@ import th.mfu.domain.GeneratorConfig;
 public class DatasetService {
 
     private final DatasetRepository datasetRepository;
+    private final ComparisonRepository comparisonRepository;
 
-    public DatasetService(DatasetRepository datasetRepository) {
+    public DatasetService(DatasetRepository datasetRepository, ComparisonRepository comparisonRepository) {
         this.datasetRepository = datasetRepository;
+        this.comparisonRepository = comparisonRepository;
     }
 
     @Transactional(readOnly = true)
@@ -81,6 +84,10 @@ public class DatasetService {
         if (config == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Dataset " + id + " has no generatorConfig");
         }
+        // Comparisons hold FK references to this dataset's points; regenerating
+        // deletes those points, so any comparisons referencing them must go first
+        // or the delete fails with a FK constraint violation.
+        comparisonRepository.deleteByPointA_Dataset_IdOrPointB_Dataset_Id(id, id);
         dataset.clearDataPoints();
         generatePoints(dataset, config);
         return toDTO(datasetRepository.save(dataset));

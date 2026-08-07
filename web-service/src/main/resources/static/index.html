@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DataDuel</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0f1720;
+    --panel: #182333;
+    --accent: #4fd1c5;
+    --accent2: #f6ad55;
+    --good: #48bb78;
+    --bad: #f56565;
+    --text: #e2e8f0;
+    --muted: #8393a8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    max-width: 1000px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    background: radial-gradient(circle at top, #1a2332, var(--bg));
+    color: var(--text);
+  }
+  h1 { font-size: 1.8rem; margin-bottom: .2rem; letter-spacing: .5px; }
+  h1 .dice { filter: drop-shadow(0 0 6px var(--accent)); }
+  h2 { font-size: 1.1rem; color: var(--accent); border-bottom: 1px solid #ffffff22; padding-bottom: .3rem; }
+  code { background: #ffffff14; padding: .1rem .35rem; border-radius: 4px; }
+  nav { display: flex; gap: .5rem; margin-bottom: 1.5rem; }
+  nav button {
+    padding: .6rem 1.2rem; cursor: pointer; border: 1px solid #ffffff22; border-radius: 8px;
+    background: var(--panel); color: var(--text); font-size: .9rem; transition: all .15s;
+  }
+  nav button.active { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 12px #4fd1c533; }
+  nav button:hover { border-color: var(--accent); }
+  section { display: none; }
+  section.active { display: block; }
+  form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .5rem; margin-bottom: 1rem; align-items: end; }
+  form label { display: flex; flex-direction: column; font-size: .8rem; gap: .2rem; color: var(--muted); }
+  form input {
+    background: var(--panel); border: 1px solid #ffffff22; color: var(--text); padding: .4rem .5rem; border-radius: 6px;
+  }
+  form button, .gameControls button, .choices button, table button {
+    min-height: 2.2rem; border: 1px solid #ffffff22; border-radius: 6px; background: var(--panel); color: var(--text); cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .1rem; padding: .3rem .6rem;
+  }
+  table { width: 100%; border-collapse: collapse; margin-top: .5rem; }
+  th, td { border: 1px solid #ffffff14; padding: .4rem .5rem; text-align: left; font-size: .85rem; }
+  th { color: var(--muted); font-weight: 600; }
+  button.danger { color: var(--bad); }
+  .msg {
+    position: fixed; top: 1.2rem; left: 50%; z-index: 100; max-width: min(90vw, 480px);
+    font-size: .85rem; padding: .7rem 1.1rem; border-radius: 8px; text-align: center;
+    box-shadow: 0 10px 30px #0008; opacity: 0; pointer-events: none;
+    transform: translate(-50%, -12px); transition: opacity .2s, transform .2s;
+  }
+  .msg.show { opacity: 1; transform: translate(-50%, 0); }
+  .msg.error { background: #2a1414; color: var(--bad); border: 1px solid #f5656555; }
+  .msg.ok { background: #132420; color: var(--good); border: 1px solid #48bb7855; }
+
+  /* --- Game --- */
+  .hint { color: var(--muted); font-size: .9rem; margin-bottom: 1.2rem; }
+  .scoreboard {
+    display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap;
+  }
+  .stat {
+    flex: 1; min-width: 110px; background: var(--panel); border: 1px solid #ffffff14; border-radius: 10px;
+    padding: .7rem 1rem; text-align: center;
+  }
+  .stat .label { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .stat b { font-size: 1.6rem; display: block; color: var(--accent); }
+  .stat b.bump { animation: bump .3s ease; }
+  .kbd { display: block; font-size: .65rem; font-weight: normal; opacity: .5; margin-top: .2rem; }
+
+  .table-felt {
+    background: radial-gradient(ellipse at center, #1c3a34, #0f2420);
+    border: 1px solid #4fd1c533; border-radius: 16px; padding: 2.5rem 1.5rem;
+    position: relative; --heat: 0;
+  }
+  /* Rising-stakes glow: intensifies and shifts teal->red as decksCleared climbs. */
+  .table-felt::after {
+    content: ''; position: absolute; inset: -2px; border-radius: 18px; pointer-events: none; z-index: 0;
+    box-shadow: 0 0 calc(20px + var(--heat) * 70px) hsla(calc(165 - var(--heat) * 165), 80%, 55%, calc(.15 + var(--heat) * .55));
+    animation: heatPulse 2s ease-in-out infinite;
+  }
+  @keyframes heatPulse { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }
+  .table-felt.shake { animation: shake .4s; }
+  @keyframes shake {
+    10%, 90% { transform: translateX(-2px); } 20%, 80% { transform: translateX(4px); }
+    30%, 50%, 70% { transform: translateX(-8px); } 40%, 60% { transform: translateX(8px); }
+  }
+
+  .fieldPopup {
+    position: absolute; top: 50%; left: 50%; z-index: 20; pointer-events: none;
+    font-size: 2rem; font-weight: 800; opacity: 0; transform: translate(-50%, -50%) scale(.4);
+    white-space: nowrap; text-shadow: 0 0 18px currentColor, 0 4px 12px #000a;
+  }
+  .fieldPopup.show { animation: popBounce .9s cubic-bezier(.34, 1.56, .64, 1) forwards; }
+  .fieldPopup.good { color: var(--good); }
+  .fieldPopup.bad { color: var(--bad); }
+  .fieldPopup.bonus { color: var(--accent2); }
+  @keyframes popBounce {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(.3) rotate(-8deg); }
+    35% { opacity: 1; transform: translate(-50%, -60%) scale(1.25) rotate(4deg); }
+    55% { transform: translate(-50%, -55%) scale(.95) rotate(-2deg); }
+    75% { opacity: 1; transform: translate(-50%, -58%) scale(1.08); }
+    100% { opacity: 0; transform: translate(-50%, -85%) scale(1); }
+  }
+
+  .burst { position: absolute; top: 50%; left: 50%; z-index: 19; pointer-events: none; font-size: 1.4rem; }
+  .burst span {
+    position: absolute; top: 0; left: 0; animation: burstOut .8s ease-out forwards;
+  }
+  @keyframes burstOut {
+    0% { opacity: 1; transform: translate(0, 0) scale(.6) rotate(0deg); }
+    100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1.3) rotate(var(--rot)); }
+  }
+
+  .deckStack { display: flex; justify-content: center; gap: -8px; margin: .8rem 0 0; min-height: 46px; }
+  .miniCard {
+    width: 26px; height: 38px; margin-left: -12px; border-radius: 4px;
+    background: repeating-linear-gradient(45deg, #2d3f56, #2d3f56 4px, #253549 4px, #253549 8px);
+    border: 1px solid #ffffff2e; box-shadow: 0 2px 6px #0006;
+    animation: stackIn .3s ease backwards;
+  }
+  .miniCard:first-child { margin-left: 0; }
+  @keyframes stackIn { 0% { opacity: 0; transform: translateY(-8px) scale(.7); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+  .stackMore { align-self: center; margin-left: .5rem; font-size: .75rem; color: var(--muted); }
+  .duel { display: flex; align-items: center; justify-content: center; gap: 2.5rem; }
+  .card-slot { display: flex; flex-direction: column; align-items: center; gap: .6rem; }
+  .card-slot .label { font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+
+  .card {
+    width: 180px; height: 240px; border-radius: 14px; position: relative; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; font-size: 2.4rem; font-weight: bold;
+    background: linear-gradient(160deg, #223347, #182333); border: 2px solid var(--accent);
+    box-shadow: 0 6px 20px #0006;
+  }
+  .card .sub { font-size: .7rem; font-weight: normal; opacity: .65; margin-top: .4rem; }
+  .card .corner { position: absolute; font-size: .95rem; font-weight: 800; line-height: 1.1; text-align: center; color: var(--accent2); }
+  .card .corner .cs { display: block; font-size: .9rem; }
+  .card .corner.tl { top: .5rem; left: .6rem; }
+  .card .corner.br { bottom: .5rem; right: .6rem; transform: rotate(180deg); }
+  .card .value { font-size: 2.3rem; text-shadow: 0 0 14px #4fd1c555; }
+  .card .suit { font-size: 1.1rem; opacity: .45; margin-top: .15rem; }
+
+  .card-flip { width: 180px; height: 240px; perspective: 1000px; }
+  .card-inner {
+    position: relative; width: 100%; height: 100%; transition: transform .5s; transform-style: preserve-3d;
+  }
+  .card-inner.flipped { transform: rotateY(180deg); }
+  .card-face {
+    position: absolute; inset: 0; backface-visibility: hidden; border-radius: 14px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 2.4rem; font-weight: bold; box-shadow: 0 6px 20px #0006;
+  }
+  .card-back {
+    background: repeating-linear-gradient(45deg, #2d3f56, #2d3f56 10px, #253549 10px, #253549 20px);
+    border: 2px solid #ffffff22; color: var(--muted); font-size: 3rem;
+  }
+  .card-front {
+    background: linear-gradient(160deg, #223347, #182333); border: 2px solid var(--accent2);
+    transform: rotateY(180deg);
+  }
+  .card-front .sub { font-size: .7rem; font-weight: normal; opacity: .65; margin-top: .4rem; }
+  .card-front .corner { position: absolute; font-size: .95rem; font-weight: 800; line-height: 1.1; text-align: center; color: var(--accent2); }
+  .card-front .corner .cs { display: block; font-size: .9rem; }
+  .card-front .corner.tl { top: .5rem; left: .6rem; }
+  .card-front .corner.br { bottom: .5rem; right: .6rem; transform: rotate(180deg); }
+  .card-front .value { font-size: 2.3rem; }
+  .card-front .suit { font-size: 1.1rem; opacity: .45; margin-top: .15rem; }
+  .card-front.correct, .card-inner.flipped .card-front.correct {
+    border-color: var(--good); box-shadow: 0 0 28px #48bb7899; animation: correctBlast .5s ease;
+  }
+  .card-front.wrong, .card-inner.flipped .card-front.wrong {
+    border-color: var(--bad); box-shadow: 0 0 28px #f5656599; animation: wrongShake .4s ease;
+  }
+  @keyframes correctBlast {
+    0% { box-shadow: 0 0 0 #48bb7800; } 40% { box-shadow: 0 0 40px #48bb78cc; } 100% { box-shadow: 0 0 28px #48bb7899; }
+  }
+  @keyframes wrongShake {
+    0%, 100% { transform: rotateY(180deg) translateX(0); }
+    25% { transform: rotateY(180deg) translateX(-6px); }
+    75% { transform: rotateY(180deg) translateX(6px); }
+  }
+
+  .vs { font-size: 1.6rem; opacity: .5; font-weight: bold; color: var(--accent2); }
+
+  .choices { display: flex; justify-content: center; align-items: stretch; gap: 1rem; margin: 1.8rem auto 1rem; max-width: 560px; }
+  .choices button {
+    flex: 1 1 0; min-width: 150px; padding: .9rem 1rem; font-size: 1rem; font-weight: 600; border-radius: 10px;
+    border: 1px solid #ffffff22; background: var(--panel); color: var(--text); text-align: center;
+  }
+  .choices button:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-1px); }
+  .choices button:disabled { opacity: .35; cursor: default; }
+  #guessHigher { border-left: 4px solid var(--good); }
+  #guessLower { border-left: 4px solid var(--bad); }
+  #guessEqual { border-left: 4px solid var(--accent2); }
+  #guessEqual .sub { display: block; font-size: .65rem; font-weight: normal; opacity: .6; margin-top: .15rem; }
+
+  .gameControls { display: flex; justify-content: center; gap: 1rem; margin-top: .5rem; }
+  #nextRound {
+    background: var(--accent); color: #0f1720; font-weight: 700; padding: .7rem 1.4rem; border: none;
+  }
+  #nextRound:disabled { background: var(--panel); color: var(--muted); }
+  #newGame { padding: .7rem 1.2rem; color: var(--muted); }
+  #newGame:hover { color: var(--text); border-color: var(--accent); }
+
+  .leaderboard { margin-top: 2rem; }
+  .leaderboard table { margin-top: .6rem; }
+  .leaderboard tr.top { background: #f6ad5522; }
+  .leaderboard tr.top td:first-child::before { content: "🏆 "; }
+  .leaderboard .empty { color: var(--muted); font-size: .85rem; padding: .6rem 0; }
+
+  .deckMeter { max-width: 560px; margin: 0 auto 1.4rem; }
+  .deckMeter .bar { height: 8px; border-radius: 4px; background: #ffffff14; overflow: hidden; }
+  .deckMeter .fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .35s ease, background .3s ease; }
+  .deckMeter.danger .fill { background: linear-gradient(90deg, var(--bad), #ff8a8a); animation: dangerPulse 1s ease-in-out infinite; }
+  .deckMeter.danger #deckLeft { color: var(--bad); font-weight: 700; }
+  .deckMeter .cap { display: flex; justify-content: space-between; font-size: .72rem; color: var(--muted); margin-top: .3rem; transition: color .2s; }
+
+  .table-felt.pulse { animation: pulse .5s ease; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 #4fd1c566; } 100% { box-shadow: 0 0 0 22px #4fd1c500; } }
+  @keyframes dangerPulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+
+  #deckCorrect.bump { animation: bump .3s ease; }
+  @keyframes bump { 0% { transform: scale(1); color: var(--accent); } 50% { transform: scale(1.3); color: var(--accent2); } 100% { transform: scale(1); } }
+
+  .overlay {
+    position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center;
+    background: #060b11cc; backdrop-filter: blur(4px); opacity: 0; pointer-events: none; transition: opacity .25s;
+  }
+  .overlay.show { opacity: 1; pointer-events: auto; }
+  .overlay-card {
+    background: var(--panel); border: 1px solid var(--bad); border-radius: 16px; padding: 2rem 2.4rem; text-align: center;
+    box-shadow: 0 20px 60px #000a; max-width: 380px; transform: scale(.9); transition: transform .25s;
+  }
+  .overlay.show .overlay-card { transform: scale(1); }
+  .overlay-card h2 { color: var(--bad); border: none; font-size: 1.8rem; margin: 0 0 .4rem; }
+  .overlay-card p { color: var(--muted); font-size: .9rem; margin: 0 0 1rem; }
+  .overlay-card .finalStats { display: flex; justify-content: center; gap: 1.2rem; margin-bottom: 1.4rem; }
+  .overlay-card .finalStats div { font-size: .75rem; color: var(--muted); }
+  .overlay-card .finalStats b { display: block; font-size: 1.3rem; color: var(--accent); }
+  .overlay-card button {
+    background: var(--accent); color: #0f1720; font-weight: 700; padding: .7rem 1.6rem; border: none;
+    border-radius: 8px; cursor: pointer; font-size: .95rem;
+  }
+</style>
+</head>
+<body>
+<h1><span class="dice">🎲</span> DataDuel</h1>
+<nav>
+  <button data-tab="play" class="active">Play</button>
+  <button data-tab="admin">Admin / Data Explorer</button>
+</nav>
+<div id="msg"></div>
+
+<section id="play" class="active">
+  <p class="hint">The left card is always revealed. Guess whether the hidden card on the right is <b>Higher</b>, <b>Lower</b>, or <b>Equal</b>. Every guess submits a real <code>Comparison</code> to the backend, which computes the true answer server-side. Each card shows two corner numbers: its rank <b>in this deck</b> and its rank <b>across every card dealt this run</b> — remembering both rewards good memory and lets you calculate better picks. <b>Decks shrink:</b> when a deck runs out, the number of cards you got right in it becomes the size of the next deck; the more cards you have left and the more decks you've cleared, the bigger each correct guess pays out. Get 0 right and it's game over — start fresh with a new 20-card deck. <b>Keys:</b> ↑/W Higher · ↓/S Lower · E Equal · Space/Enter Next card.</p>
+  <div class="scoreboard">
+    <div class="stat"><div class="label">Score</div><b id="score">0</b></div>
+    <div class="stat"><div class="label">Streak</div><b id="streak">0</b></div>
+    <div class="stat"><div class="label">Best Streak</div><b id="bestStreak">0</b></div>
+    <div class="stat"><div class="label">High Score</div><b id="highScore">0</b></div>
+    <div class="stat"><div class="label">Decks Cleared</div><b id="decksCleared">0</b></div>
+  </div>
+
+  <div class="deckMeter">
+    <div class="bar"><div class="fill" id="deckFill" style="width:100%"></div></div>
+    <div class="cap"><span id="deckLeft">0 / 20 left</span><span id="deckCorrect">0 correct this deck</span></div>
+  </div>
+  <div class="deckStack" id="deckStack"></div>
+
+  <div class="table-felt" id="tableFelt">
+    <div class="fieldPopup" id="fieldPopup"></div>
+    <div class="burst" id="burst"></div>
+    <div class="duel">
+      <div class="card-slot">
+        <div class="label">Current</div>
+        <div class="card" id="cardCurrent">?</div>
+      </div>
+      <div class="vs">VS</div>
+      <div class="card-slot">
+        <div class="label">Next (hidden)</div>
+        <div class="card-flip">
+          <div class="card-inner" id="cardNextInner">
+            <div class="card-face card-back">?</div>
+            <div class="card-face card-front" id="cardNext"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="choices">
+      <button id="guessHigher">▲ Higher<span class="kbd">↑ / W</span></button>
+      <button id="guessEqual">= Equal<span class="sub">±0.5, 20x score</span><span class="kbd">E</span></button>
+      <button id="guessLower">▼ Lower<span class="kbd">↓ / S</span></button>
+    </div>
+    <div class="gameControls">
+      <button id="nextRound" disabled>Draw Next Card →<span class="kbd">Space / Enter</span></button>
+      <button id="newGame">🔄 New Deck (reset score)</button>
+    </div>
+  </div>
+
+  <div class="leaderboard">
+    <h2>Leaderboard</h2>
+    <table>
+      <thead><tr><th>#</th><th>Score</th><th>Best Streak</th><th>Decks Cleared</th><th>When</th></tr></thead>
+      <tbody id="leaderboardRows"></tbody>
+    </table>
+    <div class="empty" id="leaderboardEmpty" style="display:none;">No runs recorded yet — play a round, then start a new deck to save your score.</div>
+  </div>
+</section>
+
+<div class="overlay" id="gameOverOverlay">
+  <div class="overlay-card">
+    <h2>💀 Game Over</h2>
+    <p>Your deck shrank to 0 cards — you got nothing right in the final deck, so there's nothing left to carry over.</p>
+    <div class="finalStats">
+      <div>Score<b id="goScore">0</b></div>
+      <div>Best Streak<b id="goStreak">0</b></div>
+      <div>Decks Cleared<b id="goDecks">0</b></div>
+    </div>
+    <button id="goNewGame">Start New Game</button>
+  </div>
+</div>
+
+<section id="admin">
+  <h2>Datasets</h2>
+  <form id="datasetForm">
+    <label>Name <input name="name" required></label>
+    <label>Description <input name="description"></label>
+    <label>Min value <input name="minValue" type="number" step="any" value="0" required></label>
+    <label>Max value <input name="maxValue" type="number" step="any" value="100" required></label>
+    <label>Sample count <input name="sampleCount" type="number" value="10" required></label>
+    <label>Seed (optional) <input name="seed" type="number"></label>
+    <button type="submit">Create</button>
+  </form>
+  <table>
+    <thead><tr><th>ID</th><th>Name</th><th>Description</th><th># Points</th><th>Created</th><th>Config</th><th></th></tr></thead>
+    <tbody id="datasetRows"></tbody>
+  </table>
+
+  <h2>Data Points</h2>
+  <form id="dataPointForm">
+    <label>Dataset ID <input name="datasetId" type="number" required></label>
+    <label>Value <input name="value" type="number" step="any" required></label>
+    <label>Position <input name="position" type="number" required></label>
+    <button type="submit">Create</button>
+  </form>
+  <table>
+    <thead><tr><th>ID</th><th>Dataset ID</th><th>Value</th><th>Position</th><th>Generated</th><th></th></tr></thead>
+    <tbody id="dataPointRows"></tbody>
+  </table>
+
+  <h2>Comparisons</h2>
+  <form id="comparisonForm">
+    <label>Point A ID <input name="pointAId" type="number" required></label>
+    <label>Point B ID <input name="pointBId" type="number" required></label>
+    <button type="submit">Compare</button>
+  </form>
+  <table>
+    <thead><tr><th>ID</th><th>A</th><th>B</th><th>Result</th><th>Difference</th><th>Compared</th><th></th></tr></thead>
+    <tbody id="comparisonRows"></tbody>
+  </table>
+</section>
+
+<script>
+const API = '/api';
+
+let msgTimer = null;
+function showMessage(text, isError) {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = 'msg show ' + (isError ? 'error' : 'ok');
+  clearTimeout(msgTimer);
+  msgTimer = setTimeout(() => { el.classList.remove('show'); }, 4000);
+}
+
+async function api(path, options) {
+  const res = await fetch(API + path, options);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`${res.status} ${res.statusText}${body ? ': ' + body : ''}`);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+function fmtDate(s) {
+  return s ? new Date(s).toLocaleString() : '';
+}
+
+// ================= GAME =================
+// Classic "higher-lower": the current card is always revealed. The player
+// guesses whether the hidden next card is higher, lower, or equal, then the
+// next card becomes the new current card and play continues.
+const game = {
+  datasetId: null,
+  pool: [],
+  current: null,
+  next: null,
+  score: 0,
+  streak: 0,
+  bestStreak: 0,
+  hasPlayed: false, // true once at least one guess has been made this run
+  minValue: 0,
+  maxValue: 100,
+  positionCounter: 0,
+  allPoints: [],      // every point dealt across every deck this run, for the "all-time" rank
+  rankMap: new Map(), // point id -> all-time rank by value (1 = lowest), the combined old+new pos
+  deckSize: 20,       // total cards in the current deck
+  correctThisDeck: 0, // correct guesses so far in the current deck -> becomes next deck's size
+  decksCleared: 0,
+};
+
+const EQUAL_LENIENCY = 0.5; // guessing "Equal" is correct if |current - next| <= this
+const EQUAL_MULTIPLIER = 20;
+const ROUND_BASE = 1.25; // score multiplier per correct guess = ROUND_BASE ^ decksCleared (starts at 1)
+const LEADERBOARD_KEY = 'dataduel_leaderboard';
+const LEADERBOARD_SIZE = 10;
+const STARTING_DECK_SIZE = 20;
+
+// ---- Leaderboard (localStorage; purely client-side, one run per completed game) ----
+function loadLeaderboard() {
+  try {
+    return JSON.parse(localStorage.getItem(LEADERBOARD_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function getHighScore() {
+  const board = loadLeaderboard();
+  return board.length ? board[0].score : 0;
+}
+
+function saveRun(score, bestStreak, decksCleared) {
+  const board = loadLeaderboard();
+  board.push({ score, bestStreak, decksCleared, when: new Date().toLocaleString() });
+  board.sort((a, b) => b.score - a.score);
+  localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(board.slice(0, LEADERBOARD_SIZE)));
+  renderLeaderboard();
+}
+
+function renderLeaderboard() {
+  const board = loadLeaderboard();
+  const rows = document.getElementById('leaderboardRows');
+  const empty = document.getElementById('leaderboardEmpty');
+  rows.innerHTML = '';
+  empty.style.display = board.length ? 'none' : 'block';
+  board.forEach((run, i) => {
+    const tr = document.createElement('tr');
+    if (i === 0) tr.classList.add('top');
+    tr.innerHTML = `<td>${i + 1}</td><td>${run.score}</td><td>${run.bestStreak}</td><td>${run.decksCleared ?? 0}</td><td>${run.when}</td>`;
+    rows.appendChild(tr);
+  });
+  document.getElementById('highScore').textContent = getHighScore();
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// Rank (not the backend's raw insertion-order `position`) reflects each
+// point's value relative to every point seen this run: higher rank = higher
+// value, so remembering a card's rank lets you predict how it compares.
+function recomputeRanks() {
+  const sorted = [...game.allPoints].sort((a, b) => a.value - b.value);
+  game.rankMap = new Map(sorted.map((p, i) => [p.id, i + 1]));
+}
+
+function trackPoints(points) {
+  game.allPoints.push(...points);
+  recomputeRanks();
+}
+
+// Rank within the deck a card was dealt in, frozen onto the point itself
+// (not a lookup keyed to "the current deck") so a card dealt earlier still
+// reports its own correct deck pos/size after later decks are dealt, while
+// its all-time pos (game.rankMap, recomputed over ALL points) stays live.
+function computeDeckRanks(points) {
+  const sorted = [...points].sort((a, b) => a.value - b.value);
+  sorted.forEach((p, i) => { p.deckPos = i + 1; p.deckSizeAtDeal = points.length; });
+}
+
+function cardFaceHTML(point) {
+  const deckPos = point.deckPos;
+  return `
+    <span class="corner tl">${deckPos}<span class="cs">◆</span></span>
+    <span class="corner br">${deckPos}<span class="cs">◆</span></span>
+    <span class="value">${point.value.toFixed(2)}</span>
+    <span class="suit">◆</span>
+    <span class="sub">deck #${deckPos}/${point.deckSizeAtDeal} · all-time #${game.rankMap.get(point.id)}/${game.allPoints.length}</span>`;
+}
+
+function renderCurrent() {
+  document.getElementById('cardCurrent').innerHTML = cardFaceHTML(game.current);
+}
+
+function resetNextCard() {
+  const inner = document.getElementById('cardNextInner');
+  const front = document.getElementById('cardNext');
+  inner.classList.remove('flipped');
+  front.classList.remove('correct', 'wrong');
+  front.innerHTML = '';
+}
+
+async function newGame() {
+  try {
+    document.getElementById('newGame').disabled = true;
+    document.getElementById('gameOverOverlay').classList.remove('show');
+
+    if (game.hasPlayed) {
+      saveRun(game.score, game.bestStreak, game.decksCleared);
+      showMessage(`Run saved: ${game.score} pts (best streak ${game.bestStreak})`);
+    }
+
+    const dataset = await api('/datasets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: `DataDuel ${new Date().toLocaleTimeString()}`,
+        description: 'Auto-generated deck for DataDuel',
+        generatorConfig: { minValue: 1, maxValue: 100, sampleCount: STARTING_DECK_SIZE }
+      })
+    });
+    game.datasetId = dataset.id;
+    game.minValue = dataset.generatorConfig.minValue;
+    game.maxValue = dataset.generatorConfig.maxValue;
+    game.positionCounter = dataset.generatorConfig.sampleCount;
+    game.allPoints = [];
+    game.rankMap = new Map();
+    const initialPoints = await fetchDatasetPoints(dataset.id);
+    trackPoints(initialPoints);
+    computeDeckRanks(initialPoints);
+    game.pool = shuffle([...initialPoints]);
+    game.score = 0;
+    game.streak = 0;
+    game.bestStreak = 0;
+    game.hasPlayed = false;
+    game.deckSize = STARTING_DECK_SIZE;
+    game.correctThisDeck = 0;
+    game.decksCleared = 0;
+    updateScoreboard();
+
+    game.current = game.pool.pop();
+    renderCurrent();
+    resetNextCard();
+    updateDeckLeft();
+    await prepareNext();
+    showMessage('New deck dealt — good luck!');
+  } catch (err) {
+    showMessage(err.message, true);
+  } finally {
+    document.getElementById('newGame').disabled = false;
+  }
+}
+
+async function fetchDatasetPoints(datasetId) {
+  const points = await api('/data-points');
+  return points.filter(p => p.datasetId === datasetId);
+}
+
+// Deals `count` fresh points by adding new points rather than calling
+// /regenerate, which wipes ALL of the dataset's points (including the
+// currently displayed card) and previously caused a 404 on the next guess.
+async function dealPoints(count) {
+  const fresh = [];
+  for (let i = 0; i < count; i++) {
+    const value = game.minValue + Math.random() * (game.maxValue - game.minValue);
+    const point = await api('/data-points', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ datasetId: game.datasetId, value, position: game.positionCounter++ })
+    });
+    fresh.push(point);
+  }
+  trackPoints(fresh);
+  return fresh;
+}
+
+function updateDeckLeft() {
+  document.getElementById('deckLeft').textContent = `${game.pool.length} / ${game.deckSize} left`;
+  const correctEl = document.getElementById('deckCorrect');
+  const prevCorrectText = correctEl.textContent;
+  correctEl.textContent = `${game.correctThisDeck} correct this deck`;
+  if (correctEl.textContent !== prevCorrectText && game.correctThisDeck > 0) {
+    correctEl.classList.remove('bump');
+    void correctEl.offsetWidth; // restart animation
+    correctEl.classList.add('bump');
+  }
+  document.getElementById('decksCleared').textContent = game.decksCleared;
+  const pct = game.deckSize > 0 ? Math.round((game.pool.length / game.deckSize) * 100) : 0;
+  document.getElementById('deckFill').style.width = pct + '%';
+  document.querySelector('.deckMeter').classList.toggle('danger', game.deckSize <= 3);
+  renderDeckStack();
+  const heat = Math.min(game.decksCleared / 12, 1); // ramps continuously, caps out at 12 decks cleared
+  document.getElementById('tableFelt').style.setProperty('--heat', heat);
+}
+
+// Face-down stack showing how many cards are left in the hidden deck —
+// count only, values stay hidden, purely a reactive visual.
+function renderDeckStack() {
+  const el = document.getElementById('deckStack');
+  const shown = Math.min(game.pool.length, 12);
+  let html = '';
+  for (let i = 0; i < shown; i++) html += '<div class="miniCard" style="animation-delay:' + (i * 0.02) + 's"></div>';
+  if (game.pool.length > shown) html += `<span class="stackMore">+${game.pool.length - shown} more</span>`;
+  el.innerHTML = html;
+}
+
+function bumpEl(el) {
+  el.classList.remove('bump');
+  void el.offsetWidth;
+  el.classList.add('bump');
+}
+
+let popupTimer = null;
+function showFieldPopup(text, type) {
+  const el = document.getElementById('fieldPopup');
+  el.textContent = text;
+  el.className = 'fieldPopup ' + type;
+  void el.offsetWidth;
+  el.classList.add('show');
+  clearTimeout(popupTimer);
+  popupTimer = setTimeout(() => el.classList.remove('show'), 900);
+}
+
+function spawnBurst(emojis) {
+  const el = document.getElementById('burst');
+  el.innerHTML = '';
+  for (let i = 0; i < 10; i++) {
+    const span = document.createElement('span');
+    span.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 60 + Math.random() * 70;
+    span.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+    span.style.setProperty('--dy', `${Math.sin(angle) * dist}px`);
+    span.style.setProperty('--rot', `${Math.random() * 360 - 180}deg`);
+    span.addEventListener('animationend', () => span.remove());
+    el.appendChild(span);
+  }
+}
+
+// The number of cards guessed right in a deck becomes the size of the next
+// deck; hitting 0 correct ends the run.
+async function handleDeckExhausted() {
+  const nextSize = game.correctThisDeck;
+  if (nextSize === 0) {
+    showGameOver();
+    return;
+  }
+  game.decksCleared += 1;
+  game.deckSize = nextSize;
+  game.correctThisDeck = 0;
+  showMessage(`Deck cleared! Next deck: ${nextSize} card${nextSize === 1 ? '' : 's'}`);
+  const felt = document.getElementById('tableFelt');
+  felt.classList.remove('pulse'); void felt.offsetWidth; felt.classList.add('pulse');
+  const fresh = await dealPoints(nextSize);
+  computeDeckRanks(fresh);
+  game.pool = shuffle(fresh);
+  renderCurrent(); // refresh the still-displayed card's all-time pos now that new points shifted ranks
+  await prepareNext();
+}
+
+function showGameOver() {
+  saveRun(game.score, game.bestStreak, game.decksCleared);
+  game.hasPlayed = false;
+  document.getElementById('goScore').textContent = game.score;
+  document.getElementById('goStreak').textContent = game.bestStreak;
+  document.getElementById('goDecks').textContent = game.decksCleared;
+  ['guessHigher', 'guessEqual', 'guessLower'].forEach(id => document.getElementById(id).disabled = true);
+  document.getElementById('nextRound').disabled = true;
+  document.getElementById('gameOverOverlay').classList.add('show');
+}
+
+async function prepareNext() {
+  if (game.pool.length < 1) {
+    await handleDeckExhausted();
+    return;
+  }
+  game.next = game.pool.pop();
+  updateDeckLeft();
+  resetNextCard();
+  ['guessHigher', 'guessEqual', 'guessLower'].forEach(id => document.getElementById(id).disabled = false);
+  document.getElementById('nextRound').disabled = true;
+}
+
+function updateScoreboard() {
+  const scoreEl = document.getElementById('score');
+  if (Number(scoreEl.textContent) !== game.score && game.score > 0) bumpEl(scoreEl);
+  scoreEl.textContent = game.score;
+  document.getElementById('streak').textContent = game.streak;
+  document.getElementById('bestStreak').textContent = game.bestStreak;
+  document.getElementById('highScore').textContent = Math.max(getHighScore(), game.score);
+}
+
+async function guess(direction) {
+  ['guessHigher', 'guessEqual', 'guessLower'].forEach(id => document.getElementById(id).disabled = true);
+  game.hasPlayed = true;
+  try {
+    const comparison = await api('/comparisons', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pointAId: game.current.id, pointBId: game.next.id })
+    });
+
+    const actual = comparison.result === 'B_GREATER' ? 'HIGHER'
+      : comparison.result === 'A_GREATER' ? 'LOWER'
+      : 'EQUAL';
+
+    // "Equal" guesses get leniency: within EQUAL_LENIENCY of each other counts,
+    // even though the server's exact result is almost never EQUAL for doubles.
+    const withinLeniency = comparison.difference <= EQUAL_LENIENCY;
+    const correct = direction === 'EQUAL' ? withinLeniency : direction === actual;
+    const bonusRound = direction === 'EQUAL' && correct;
+
+    const front = document.getElementById('cardNext');
+    front.innerHTML = cardFaceHTML(game.next);
+    front.classList.add(correct ? 'correct' : 'wrong');
+    document.getElementById('cardNextInner').classList.add('flipped');
+
+    const felt = document.getElementById('tableFelt');
+    if (correct) {
+      // Cards still left this deck and decks already cleared both scale the
+      // payout, so accurate guessing late in a deck and deep into a run pays
+      // out much more: cardsLeft factor + exponential ROUND_BASE^decksCleared.
+      const cardsLeftFactor = game.pool.length + 1;
+      const roundMultiplier = Math.pow(ROUND_BASE, game.decksCleared);
+      const base = Math.round((10 + game.streak * 2) * cardsLeftFactor * roundMultiplier);
+      const points = bonusRound ? base * EQUAL_MULTIPLIER : base;
+      game.score += points;
+      game.streak += 1;
+      game.bestStreak = Math.max(game.bestStreak, game.streak);
+      game.correctThisDeck += 1;
+      showFieldPopup(`✓ +${points}${bonusRound ? ' EQUAL!' : ''}`, bonusRound ? 'bonus' : 'good');
+      spawnBurst(bonusRound ? ['🌟', '💎', '✨'] : ['🎉', '✨', '⭐']);
+    } else {
+      game.streak = 0;
+      showFieldPopup(`✗ ${actual}`, 'bad');
+      felt.classList.remove('shake'); void felt.offsetWidth; felt.classList.add('shake');
+    }
+    updateScoreboard();
+    updateDeckLeft();
+    document.getElementById('nextRound').disabled = false;
+  } catch (err) {
+    showMessage(err.message, true);
+    ['guessHigher', 'guessEqual', 'guessLower'].forEach(id => document.getElementById(id).disabled = false);
+  }
+}
+
+async function drawNext() {
+  document.getElementById('nextRound').disabled = true;
+  game.current = game.next;
+  renderCurrent();
+  await prepareNext();
+}
+
+document.getElementById('guessHigher').onclick = () => guess('HIGHER');
+document.getElementById('guessLower').onclick = () => guess('LOWER');
+document.getElementById('guessEqual').onclick = () => guess('EQUAL');
+document.getElementById('nextRound').onclick = () => drawNext();
+document.getElementById('newGame').onclick = () => newGame();
+document.getElementById('goNewGame').onclick = () => newGame();
+
+document.addEventListener('keydown', (e) => {
+  if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+  const k = e.key.toLowerCase();
+  if (k === 'arrowup' || k === 'w') { e.preventDefault(); document.getElementById('guessHigher').click(); }
+  else if (k === 'arrowdown' || k === 's') { e.preventDefault(); document.getElementById('guessLower').click(); }
+  else if (k === 'e') { document.getElementById('guessEqual').click(); }
+  else if (k === ' ' || k === 'enter' || k === 'arrowright') { e.preventDefault(); document.getElementById('nextRound').click(); }
+});
+
+// ================= ADMIN / DATA EXPLORER =================
+async function loadDatasets() {
+  const rows = document.getElementById('datasetRows');
+  rows.innerHTML = '';
+  const datasets = await api('/datasets');
+  for (const d of datasets) {
+    const cfg = d.generatorConfig ? `[${d.generatorConfig.minValue}, ${d.generatorConfig.maxValue}) x${d.generatorConfig.sampleCount}` : '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${d.id}</td><td>${d.name ?? ''}</td><td>${d.description ?? ''}</td>` +
+      `<td>${d.dataPointCount ?? ''}</td><td>${fmtDate(d.createdAt)}</td><td>${cfg}</td>` +
+      `<td><button data-regen="${d.id}">Regenerate</button> <button class="danger" data-del="${d.id}">Delete</button></td>`;
+    rows.appendChild(tr);
+  }
+  rows.querySelectorAll('[data-regen]').forEach(btn => btn.onclick = () => regenerateDataset(btn.dataset.regen));
+  rows.querySelectorAll('[data-del]').forEach(btn => btn.onclick = () => deleteDataset(btn.dataset.del));
+}
+
+document.getElementById('datasetForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const seed = f.get('seed');
+  const dto = {
+    name: f.get('name'),
+    description: f.get('description') || null,
+    generatorConfig: {
+      minValue: Number(f.get('minValue')),
+      maxValue: Number(f.get('maxValue')),
+      sampleCount: Number(f.get('sampleCount')),
+      seed: seed ? Number(seed) : null
+    }
+  };
+  try {
+    await api('/datasets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dto) });
+    e.target.reset();
+    showMessage('Dataset created');
+    await loadDatasets();
+  } catch (err) { showMessage(err.message, true); }
+};
+
+async function regenerateDataset(id) {
+  try {
+    await api(`/datasets/${id}/regenerate`, { method: 'POST' });
+    showMessage(`Dataset ${id} regenerated`);
+    await loadDatasets();
+  } catch (err) { showMessage(err.message, true); }
+}
+
+async function deleteDataset(id) {
+  try {
+    await api(`/datasets/${id}`, { method: 'DELETE' });
+    showMessage(`Dataset ${id} deleted`);
+    await loadDatasets();
+  } catch (err) { showMessage(err.message, true); }
+}
+
+async function loadDataPoints() {
+  const rows = document.getElementById('dataPointRows');
+  rows.innerHTML = '';
+  const points = await api('/data-points');
+  for (const p of points) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${p.id}</td><td>${p.datasetId ?? ''}</td><td>${p.value != null ? p.value.toFixed(2) : ''}</td>` +
+      `<td>${p.position ?? ''}</td><td>${fmtDate(p.generatedAt)}</td>` +
+      `<td><button class="danger" data-del="${p.id}">Delete</button></td>`;
+    rows.appendChild(tr);
+  }
+  rows.querySelectorAll('[data-del]').forEach(btn => btn.onclick = () => deleteDataPoint(btn.dataset.del));
+}
+
+document.getElementById('dataPointForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const dto = {
+    datasetId: Number(f.get('datasetId')),
+    value: Number(f.get('value')),
+    position: Number(f.get('position'))
+  };
+  try {
+    await api('/data-points', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dto) });
+    e.target.reset();
+    showMessage('Data point created');
+    await loadDataPoints();
+  } catch (err) { showMessage(err.message, true); }
+};
+
+async function deleteDataPoint(id) {
+  try {
+    await api(`/data-points/${id}`, { method: 'DELETE' });
+    showMessage(`Data point ${id} deleted`);
+    await loadDataPoints();
+  } catch (err) { showMessage(err.message, true); }
+}
+
+async function loadComparisons() {
+  const rows = document.getElementById('comparisonRows');
+  rows.innerHTML = '';
+  const comparisons = await api('/comparisons');
+  for (const c of comparisons) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${c.id}</td><td>${c.pointAId ?? ''} (${c.valueA != null ? c.valueA.toFixed(2) : ''})</td>` +
+      `<td>${c.pointBId ?? ''} (${c.valueB != null ? c.valueB.toFixed(2) : ''})</td><td>${c.result ?? ''}</td>` +
+      `<td>${c.difference != null ? c.difference.toFixed(2) : ''}</td><td>${fmtDate(c.comparedAt)}</td>` +
+      `<td><button class="danger" data-del="${c.id}">Delete</button></td>`;
+    rows.appendChild(tr);
+  }
+  rows.querySelectorAll('[data-del]').forEach(btn => btn.onclick = () => deleteComparison(btn.dataset.del));
+}
+
+document.getElementById('comparisonForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const dto = { pointAId: Number(f.get('pointAId')), pointBId: Number(f.get('pointBId')) };
+  try {
+    await api('/comparisons', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dto) });
+    e.target.reset();
+    showMessage('Comparison created');
+    await loadComparisons();
+  } catch (err) { showMessage(err.message, true); }
+};
+
+async function deleteComparison(id) {
+  try {
+    await api(`/comparisons/${id}`, { method: 'DELETE' });
+    showMessage(`Comparison ${id} deleted`);
+    await loadComparisons();
+  } catch (err) { showMessage(err.message, true); }
+}
+
+// ================= TABS =================
+document.querySelectorAll('nav button').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+  };
+});
+
+loadDatasets();
+loadDataPoints();
+loadComparisons();
+renderLeaderboard();
+newGame();
+</script>
+</body>
+</html>
